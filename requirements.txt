@@ -1,0 +1,10 @@
+# Minimum versions for quick installs. Exact versions used for reported results
+# are recorded in results/<experiment>/metadata.json; a lock file comes at M7.
+numpy>=1.26
+scipy>=1.11
+scikit-learn>=1.3
+pyyaml>=6.0
+pandas>=2.0
+matplotlib>=3.7
+pytest>=7.4
+ruff>=0.4

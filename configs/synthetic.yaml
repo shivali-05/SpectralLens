@@ -1,0 +1,43 @@
+signals:
+  single_sinusoid:
+    components: [{f: 5.0, amp: 1.0}]
+    phase: random
+  multi_sinusoid:
+    components: [{f: 2.0, amp: 1.0}, {f: 5.0, amp: 0.6}, {f: 11.0, amp: 0.3}]
+    phase: random
+  trend_seasonal:                # stress test only, not part of the core comparison
+    components: [{f: 5.0, amp: 1.0}]
+    phase: random
+    trend: {total_drift_in_amp: 1.0}
+    role: stress_test
+
+noise_std: 0.1
+
+anomalies:
+  point_spike:
+    duration: 1
+    levels:
+      easy: {magnitude_sigma: 8.0}     # in units of the clean periodic signal's std
+      default: {magnitude_sigma: 5.0}
+      hard: {magnitude_sigma: 3.0}
+  amplitude_change:
+    duration: 200
+    ramp: 10                            # raised-cosine edges, inside the labeled range
+    levels:
+      easy: {factor: 2.0}
+      default: {factor: 1.5}
+      hard: {factor: 1.25}
+  frequency_shift:                      # all components scaled, phase-continuous
+    duration: 200
+    ramp: 10                            # blend back to baseline over the last 10 samples
+    levels:
+      easy: {ratio: 2.0}
+      default: {ratio: 1.6}
+      hard: {ratio: 1.2}
+  local_frequency_insertion:            # additive, Hann-tapered
+    f: 20.0
+    rel_amp: 0.5                        # relative to the largest component amplitude
+    levels:
+      easy: {duration: 100}
+      default: {duration: 50}
+      hard: {duration: 25}

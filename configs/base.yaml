@@ -1,0 +1,47 @@
+project: spectrallens
+seed: 20260101
+
+sampling:
+  fs: 100                      # Hz
+
+protocol:                      # sample indices, half-open [start, end)
+  series_length: 12000
+  fit: [0, 4000]               # normal only: detector and scaler are fit here
+  calibration: [4000, 6000]    # normal only: thresholds are set here, nothing else
+  test: [6000, 12000]          # exactly one anomaly, away from the edges
+  anomaly_margin: 600          # >= largest window (512) + slack
+  n_anomalies: 1
+  windows_within_split: true   # a window never straddles two splits
+
+windowing:
+  size: 128
+  step: 8                      # fixed across window-size sweeps
+
+features:
+  temporal: [mean, median, std, min, max, range, iqr, slope,
+             mean_abs_diff, std_diff, acf1]
+  spectral:
+    window_fn: hann
+    remove_mean: true
+    band_edges_nyquist_frac: [0.0, 0.12, 0.30, 1.0]   # 0-6, 6-15, 15-50 Hz at fs=100
+    peak_rule: {prominence_frac_of_max: 0.10}
+    entropy: normalized
+
+detector:
+  name: isolation_forest
+  params:
+    n_estimators: 200
+    max_samples: 256
+    max_features: 1.0
+    bootstrap: false
+    contamination: auto
+
+scaling: {type: standard, fit_on: fit}
+threshold: {source: calibration, quantile: 0.99}   # thresholded metrics are secondary
+mapping: {point_score: mean_of_covering_windows}
+
+evaluation:
+  primary: point_average_precision
+  secondary: [roc_auc, f1_at_threshold, event_hit, detection_delay]
+  event_tolerance: 100
+  report_prevalence: true

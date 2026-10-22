@@ -1,0 +1,255 @@
+diff -ruN a/configs/synthetic.yaml b/configs/synthetic.yaml
+--- a/configs/synthetic.yaml	2026-10-13 03:17:06.692783648 +0000
++++ b/configs/synthetic.yaml	2026-10-13 03:17:06.697171448 +0000
+@@ -29,6 +29,7 @@
+       hard: {factor: 1.25}
+   frequency_shift:                      # all components scaled, phase-continuous
+     duration: 200
++    ramp: 10                            # blend back to baseline over the last 10 samples
+     levels:
+       easy: {ratio: 2.0}
+       default: {ratio: 1.6}
+diff -ruN a/research/DECISIONS.md b/research/DECISIONS.md
+--- a/research/DECISIONS.md	2026-10-13 03:17:06.692949520 +0000
++++ b/research/DECISIONS.md	2026-10-13 03:17:06.697231123 +0000
+@@ -25,9 +25,8 @@
+ 
+ ## D-005 Injection rules (2026-10-12)
+ - Frequency shift: all components scaled, phase-continuous (instantaneous frequency integrated).
+-  After the segment the signal continues at the base frequency with a *permanent phase offset*;
+-  this is harmless for window-level features but is not byte-identical to the null series after
+-  the anomaly.
++  (See D-009: the original version left a permanent phase offset after the segment; that was
++  found to be a flaw and fixed.)
+ - Amplitude change: raised-cosine edges of 10 samples, inside the labeled range.
+ - Local insertion: additive, Hann-tapered, at 20 Hz (not a component of any base signal).
+ - Point spike: single sample, magnitude in units of the clean periodic signal's std, random sign.
+@@ -49,6 +48,24 @@
+ IF. Train-only scaling is still applied (leakage rule, and it matters for the distance-based local
+ spectral detector). Do not expect scaling to explain RQ1 differences.
+ 
++## D-009 Frequency shifts blend back to the baseline (2026-10-12)
++*Problem found.* Integrating the instantaneous frequency keeps phase continuous, but the extra phase
++gained during the shift persists afterwards. For `single_sinusoid` at the default settings the
++extra phase is exactly 6 whole cycles (5 Hz x 0.6 x 2 s), so nothing remained; for
++`multi_sinusoid` (2, 5, 11 Hz) it is 2.4, 6.0 and 13.2 cycles, so the components' *relative phases*
++changed and the waveform shape after the anomaly differed from training. D-005 wrongly called this
++harmless for window-level features.
++*Evidence.* Noise-free, window-max after the anomaly drifted by |z| of about 82 (std of pre-anomaly
++window-max) versus 0.74 for the null control. At sigma = 0.1 the drift was indistinguishable from
++the null control (0.37 vs 0.35), so the effect is hidden by noise at the default level but may
++matter at lower noise (sigma = 0.05 in the noise sweep). An earlier measurement without a null
++control wrongly suggested a small real effect at sigma = 0.1.
++*Fix.* The last `ramp` (10) samples of the segment cross-fade from the shifted signal back to the
++baseline, so everything outside the labeled range equals the null series exactly. Guarded by
++`test_series_equals_the_null_series_outside_the_labeled_range`.
++*Cost.* The cross-fade region is inside the labeled range, so it counts as anomalous; the pure
++shifted part is `duration - ramp` samples.
++
+ ## Pending
+-- D-009 Spectral feature set v1 hyperparameters (window function, band edges, peak rule) are in
++- D-010 Spectral feature set v1 hyperparameters (window function, band edges, peak rule) are in
+   `configs/base.yaml` but are **not frozen** until M3. Freeze with a version tag before running RQ1.
+diff -ruN a/research/PROJECT_LOG.md b/research/PROJECT_LOG.md
+--- a/research/PROJECT_LOG.md	2026-10-13 03:17:06.692938108 +0000
++++ b/research/PROJECT_LOG.md	2026-10-13 03:17:06.697258757 +0000
+@@ -9,7 +9,15 @@
+   (edge step ratio 1.61 vs limit 1.8) from a naive splice (4.64).
+ - Decisions D-001..D-008 and hypotheses H1..H5 written before any detector exists.
+ 
++## 2026-10-12 (later): first real-environment run and a generator fix
++- Real pytest on Python 3.13 / macOS: 30 passed. Ruff reported 4 style issues (2x B905 `zip`
++  without `strict=`, 1x E501 line too long, 1x I001 import order); fixed.
++- Found and fixed a flaw in frequency-shift injection (permanent phase offset after the anomaly
++  for multi-component signals). See D-009. Added a regression test over every signal and anomaly
++  type. Replaced a weak amplitude edge test (it passed with the ramp removed for 3 of 5 series)
++  with a stronger one; mutation-checked both. Suite is now 32 tests.
++- Lesson: a measurement without a control can look like evidence when it is not.
++
+ ### Next
+-- Run the suite under real pytest and ruff (not available in the authoring sandbox).
+-- M1 acceptance: identical regeneration (done), anomalies inside test margins (done), CI green.
+-- Then M2: windowing, point mapping, metrics, runner.
++- Confirm CI is green on GitHub (ruff + pytest on 3.10 and 3.12).
++- M2: windowing, point mapping, metrics, runner, following docs/WORKING_AGREEMENT.md.
+diff -ruN a/scripts/plot_examples.py b/scripts/plot_examples.py
+--- a/scripts/plot_examples.py	2026-10-13 03:17:06.693219379 +0000
++++ b/scripts/plot_examples.py	2026-10-13 03:17:06.697486929 +0000
+@@ -27,7 +27,7 @@
+     kinds = [None, *ANOMALY_TYPES]
+     fig, axes = plt.subplots(len(kinds), 1, figsize=(11, 2.2 * len(kinds)))
+     ref = generate_series(cfg, args.signal, "frequency_shift", args.index).metadata["anomaly"]
+-    for ax, kind in zip(axes, kinds):
++    for ax, kind in zip(axes, kinds, strict=True):
+         s = generate_series(cfg, args.signal, kind, args.index)
+         a = s.metadata["anomaly"] or ref
+         lo, hi = a["start"] - args.pad, a["end"] + args.pad
+@@ -37,9 +37,11 @@
+         ax.set_ylabel(kind or "null", fontsize=9)
+         ax.margins(x=0)
+     axes[-1].set_xlabel("time (s)")
+-    axes[0].set_title(f"{args.signal}, index {args.index}, default difficulty "
+-                      "(shaded = labeled range; null shows the frequency_shift range for reference)",
+-                      fontsize=9)
++    axes[0].set_title(
++        f"{args.signal}, index {args.index}, default difficulty "
++        "(shaded = labeled range; null shows the frequency_shift range for reference)",
++        fontsize=9,
++    )
+     fig.tight_layout()
+     out = Path(args.out)
+     out.parent.mkdir(parents=True, exist_ok=True)
+diff -ruN a/src/spectrallens/data/synthetic.py b/src/spectrallens/data/synthetic.py
+--- a/src/spectrallens/data/synthetic.py	2026-10-13 03:17:06.693289161 +0000
++++ b/src/spectrallens/data/synthetic.py	2026-10-13 03:17:06.696920283 +0000
+@@ -6,8 +6,9 @@
+   phases and the unit-variance noise draw are identical across anomaly types, difficulty levels,
+   durations and noise levels. Comparisons across those factors are therefore paired.
+ * Anomalies live in the test split only, at least ``anomaly_margin`` samples from its edges.
+-* Injections avoid trivially detectable artifacts: frequency shifts are phase-continuous,
+-  amplitude changes use raised-cosine edges, insertions are Hann-tapered.
++* Injections avoid trivially detectable artifacts: frequency shifts are phase-continuous and
++  blend back to the baseline at their end, amplitude changes use raised-cosine edges, insertions
++  are Hann-tapered. Outside its labeled range every series equals its null series exactly.
+ * Noise is added last, so ``x(noise_std=a) - x(noise_std=b) == (a - b) * z`` exactly.
+ """
+ 
+@@ -102,7 +103,7 @@
+     m = np.ones(n) if freq_mult is None else freq_mult
+     cum = np.concatenate(([0.0], np.cumsum(m)[:-1]))   # cum[k] = sum of m[:k]; arange(n) if m=1
+     out = np.zeros(n)
+-    for comp, phi in zip(components, phases):
++    for comp, phi in zip(components, phases, strict=True):
+         out += comp["amp"] * np.sin(phi + 2.0 * np.pi * comp["f"] * cum / fs)
+     return out if envelope is None else out * envelope
+ 
+@@ -120,6 +121,17 @@
+     return 1.0 + (factor - 1.0) * w
+ 
+ 
++def _blend_back_weights(n: int, start: int, end: int, ramp: int) -> np.ndarray:
++    """Weight 1 inside [start, end), 0 outside, easing 1 -> 0 over the last ``ramp`` samples."""
++    ramp = int(min(ramp, (end - start) // 2))
++    w = np.zeros(n)
++    w[start:end] = 1.0
++    if ramp > 0:
++        k = np.arange(1, ramp + 1)
++        w[end - ramp : end] = 0.5 * (1.0 + np.cos(np.pi * k / (ramp + 1)))
++    return w
++
++
+ # --------------------------------------------------------------------------- generator
+ 
+ 
+@@ -164,6 +176,7 @@
+     anomaly_meta: dict[str, Any] | None = None
+     freq_mult = None
+     envelope = None
++    blend = None
+     additive = np.zeros(n)
+ 
+     if anomaly_type is None:
+@@ -187,6 +200,8 @@
+         elif anomaly_type == "frequency_shift":
+             freq_mult = np.ones(n)
+             freq_mult[start:end] = float(params["ratio"])
++            # Extra phase gained during the shift would otherwise persist after the anomaly.
++            blend = _blend_back_weights(n, start, end, int(params.get("ramp", 0)))
+         elif anomaly_type == "local_frequency_insertion":
+             phi_ins = float(rng_a.uniform(0, 2 * np.pi))
+             tt = np.arange(dur)
+@@ -209,7 +224,10 @@
+             "region": "test",
+         }
+ 
+-    clean = _periodic(comps, phases, n, fs, freq_mult, envelope) + trend + additive
++    periodic = _periodic(comps, phases, n, fs, freq_mult, envelope)
++    if blend is not None:
++        periodic = (1.0 - blend) * baseline + blend * periodic
++    clean = periodic + trend + additive
+     x = clean + noise_std * z
+ 
+     series_id = make_series_id(signal_type, anomaly_type, difficulty, dur, noise_std, index)
+diff -ruN a/tests/test_config.py b/tests/test_config.py
+--- a/tests/test_config.py	2026-10-13 03:17:06.693403099 +0000
++++ b/tests/test_config.py	2026-10-13 03:17:06.697415080 +0000
+@@ -1,7 +1,12 @@
+ import pytest
+ 
+-from spectrallens.config import config_hash, deep_merge, load_config, load_experiment
+-from spectrallens.config import DEFAULT_CONFIG_DIR
++from spectrallens.config import (
++    DEFAULT_CONFIG_DIR,
++    config_hash,
++    deep_merge,
++    load_config,
++    load_experiment,
++)
+ 
+ 
+ def test_deep_merge_overrides_nested_and_replaces_lists():
+diff -ruN a/tests/test_synthetic.py b/tests/test_synthetic.py
+--- a/tests/test_synthetic.py	2026-10-13 03:17:06.693416278 +0000
++++ b/tests/test_synthetic.py	2026-10-13 03:17:06.697442091 +0000
+@@ -70,12 +70,18 @@
+     assert abs(np.std(z_ref) - 1.0) < 0.05
+ 
+ 
+-def test_pre_anomaly_samples_match_the_null_series():
+-    null = generate_series(CFG, "single_sinusoid", None, 4, noise_std=0.0)
+-    for anom in ANOMALY_TYPES:
+-        s = generate_series(CFG, "single_sinusoid", anom, 4, noise_std=0.0)
+-        start = s.metadata["anomaly"]["start"]
+-        np.testing.assert_allclose(s.x[:start], null.x[:start], atol=1e-12)
++def test_series_equals_the_null_series_outside_the_labeled_range():
++    # Regression test: a frequency shift used to leave a permanent phase offset after the anomaly
++    # for multi_sinusoid, so post-anomaly windows looked different from training windows.
++    for sig in SIGNALS:
++        null = generate_series(CFG, sig, None, 4, noise_std=0.0)
++        for anom in ANOMALY_TYPES:
++            for i in range(5):
++                null = generate_series(CFG, sig, None, i, noise_std=0.0)
++                s = generate_series(CFG, sig, anom, i, noise_std=0.0)
++                a = s.metadata["anomaly"]
++                np.testing.assert_allclose(s.x[: a["start"]], null.x[: a["start"]], atol=1e-9)
++                np.testing.assert_allclose(s.x[a["end"]:], null.x[a["end"]:], atol=1e-9)
+ 
+ 
+ def test_point_spike_has_the_configured_magnitude():
+@@ -96,10 +102,32 @@
+     inner = slice(a["start"] + ramp, a["end"] - ramp)
+     np.testing.assert_allclose(s.x[inner], 1.5 * null.x[inner], atol=1e-9)
+     np.testing.assert_allclose(s.x[a["end"]:], null.x[a["end"]:], atol=1e-12)
+-    # no step at the edges: neighbouring-sample jumps stay near the clean signal's own
+-    max_clean_step = np.max(np.abs(np.diff(null.x)))
+-    for edge in (a["start"], a["end"]):
+-        assert np.max(np.abs(np.diff(s.x[edge - 3: edge + 4]))) < 1.5 * max_clean_step
++
++
++def test_amplitude_change_eases_in_and_out():
++    # Without the raised-cosine ramp the first/last labeled sample differs from the null series
++    # by (factor - 1) * |wave| (up to 0.5 here). With it the difference is at most about 0.01.
++    # Checked over several series because the wave's phase at the edge varies with the seed.
++    for sig in ("single_sinusoid", "multi_sinusoid"):
++        for i in range(10):
++            null = generate_series(CFG, sig, None, i, noise_std=0.0)
++            s = generate_series(CFG, sig, "amplitude_change", i, noise_std=0.0)
++            a = s.metadata["anomaly"]
++            for idx in (a["start"], a["end"] - 1):
++                assert abs(s.x[idx] - null.x[idx]) < 0.05
++
++
++def test_frequency_shift_starts_continuously_and_returns_to_baseline():
++    # Phase continuity: at the first labeled sample the shifted wave equals the baseline exactly.
++    # Blend-back: at the last labeled sample it is back within about 2 percent of the baseline.
++    # Checked on multi_sinusoid too, where leftover phase offset used to show up.
++    for sig in ("single_sinusoid", "multi_sinusoid"):
++        for i in range(10):
++            null = generate_series(CFG, sig, None, i, noise_std=0.0)
++            s = generate_series(CFG, sig, "frequency_shift", i, noise_std=0.0)
++            a = s.metadata["anomaly"]
++            assert abs(s.x[a["start"]] - null.x[a["start"]]) < 1e-9
++            assert abs(s.x[a["end"] - 1] - null.x[a["end"] - 1]) < 0.05
+ 
+ 
+ def test_frequency_shift_is_phase_continuous_with_the_right_frequency():

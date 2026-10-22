@@ -1,0 +1,16 @@
+# DRAFT: not runnable until the runner exists (M2) and feature set v1 is frozen (M3).
+status: draft
+inherit: [base, synthetic]
+experiment_id: rq1_representation_v1
+question: RQ1
+hypotheses: research/HYPOTHESES.md#rq1
+data:
+  signals: [single_sinusoid, multi_sinusoid]
+  anomalies: [point_spike, amplitude_change, frequency_shift, local_frequency_insertion]
+  difficulty: default
+  n_seeds: 30
+factors:                       # full cross-product; everything else comes from base
+  representation: [temporal, spectral, hybrid]
+  windowing.size: [128]
+controls: [random_score, robust_z]
+outputs: {save_scores: true, example_plots_per_cell: 2}
