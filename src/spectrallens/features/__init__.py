@@ -17,10 +17,12 @@ from spectrallens.features.temporal import (
     extract_temporal_features,
 )
 
+FEATURE_SET_VERSION = "v1"
 HYBRID_FEATURE_NAMES = TEMPORAL_FEATURE_NAMES + SPECTRAL_FEATURE_NAMES
 N_HYBRID_FEATURES = len(HYBRID_FEATURE_NAMES)
 
 __all__ = [
+    "FEATURE_SET_VERSION",
     "HYBRID_FEATURE_NAMES",
     "N_HYBRID_FEATURES",
     "N_SPECTRAL_FEATURES",

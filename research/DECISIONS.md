@@ -66,6 +66,17 @@ baseline, so everything outside the labeled range equals the null series exactly
 *Cost.* The cross-fade region is inside the labeled range, so it counts as anomalous; the pure
 shifted part is `duration - ramp` samples.
 
-## Pending
-- D-010 Spectral feature set v1 hyperparameters (window function, band edges, peak rule) are in
-  `configs/base.yaml` but are **not frozen** until M3. Freeze with a version tag before running RQ1.
+## D-010 Feature Set v1 frozen for RQ1 representation study (2026-10-25)
+Feature Set v1 is frozen with version tag `features_v1`.
+- **11 Temporal features**: `mean`, `median`, `std`, `min`, `max`, `range`, `iqr`, `slope`,
+  `mean_abs_diff`, `std_diff`, `acf1`.
+- **10 Spectral features**: `dominant_freq`, `dominant_magnitude`, `spectral_energy`,
+  `spectral_entropy`, `spectral_centroid`, `spectral_bandwidth`, `band_ratio_low`,
+  `band_ratio_mid`, `band_ratio_high`, `peak_count`.
+- **Hyperparameters**: $f_s = 100$ Hz, Hann window (`window_fn: hann`), DC mean removed
+  (`remove_mean: true`), Nyquist fraction band edges $[0.0, 0.12, 0.30, 1.0]$ ($0-6$ Hz low,
+  $6-15$ Hz mid, $15-50$ Hz high), peak prominence ratio $0.10$, normalized entropy.
+- **21 Hybrid features**: exact concatenation of temporal features followed by spectral features.
+*Why:* Pre-registering and freezing the representation definitions prior to the 30-seed RQ1
+evaluation prevents post-hoc feature engineering bias and p-hacking. Any subsequent feature
+modifications belong to v2 or the parking lot.

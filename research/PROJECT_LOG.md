@@ -38,4 +38,12 @@
 - Created CLI entry point (`scripts/run_experiment.py`) with argument parsing for seed sweeps and diagnostic plots.
 - Test suite expanded to 106 tests, all passing in <8s with zero warnings and zero ruff lint errors.
 
+## 2026-10-25: Milestone 3 Started — Feature Set v1 Frozen & Active (Step 3.1)
+- Resolved DECISIONS.md D-010: Feature Set v1 formally frozen with tag `features_v1`.
+- Declared `FEATURE_SET_VERSION = "v1"` in `src/spectrallens/features/__init__.py`.
+- Activated `configs/experiments/rq1_representation_v1.yaml` (`status: active`).
+- Added strict immutability unit test `test_feature_set_v1_frozen_and_immutable` in `tests/test_spectral.py`.
+- 106 tests passing with zero warnings and zero ruff lint errors.
+
+
 

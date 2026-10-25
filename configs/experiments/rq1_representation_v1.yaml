@@ -1,5 +1,6 @@
-# DRAFT: not runnable until the runner exists (M2) and feature set v1 is frozen (M3).
-status: draft
+# Main representation study: Temporal vs Spectral vs Hybrid across 4 anomaly types (M3).
+# Feature set v1 frozen (D-010). Evaluated over 30 seeds with paired design.
+status: active
 inherit: [base, synthetic]
 experiment_id: rq1_representation_v1
 question: RQ1

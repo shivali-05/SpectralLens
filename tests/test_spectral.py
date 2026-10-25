@@ -17,11 +17,13 @@ import pytest
 
 from spectrallens.config import load_config
 from spectrallens.features import (
+    FEATURE_SET_VERSION,
     HYBRID_FEATURE_NAMES,
     N_HYBRID_FEATURES,
     N_SPECTRAL_FEATURES,
     N_TEMPORAL_FEATURES,
     SPECTRAL_FEATURE_NAMES,
+    TEMPORAL_FEATURE_NAMES,
     extract_features,
     extract_hybrid_features,
     extract_spectral_features,
@@ -37,10 +39,26 @@ def _sine_window(freq: float, fs: float = 100.0, W: int = 128, amp: float = 1.0)
 
 # ── Feature count and dimensionality ─────────────────────────────────────────
 
-def test_spectral_feature_names_and_count():
+def test_feature_set_v1_frozen_and_immutable():
+    """Verify Feature Set v1 tag (D-010) and exact immutable feature composition."""
+    assert FEATURE_SET_VERSION == "v1"
+
+    expected_temporal = [
+        "mean", "median", "std", "min", "max", "range",
+        "iqr", "slope", "mean_abs_diff", "std_diff", "acf1",
+    ]
+    expected_spectral = [
+        "dominant_freq", "dominant_magnitude", "spectral_energy",
+        "spectral_entropy", "spectral_centroid", "spectral_bandwidth",
+        "band_ratio_low", "band_ratio_mid", "band_ratio_high", "peak_count",
+    ]
+
+    assert TEMPORAL_FEATURE_NAMES == expected_temporal
+    assert SPECTRAL_FEATURE_NAMES == expected_spectral
+    assert HYBRID_FEATURE_NAMES == expected_temporal + expected_spectral
+    assert len(TEMPORAL_FEATURE_NAMES) == N_TEMPORAL_FEATURES == 11
     assert len(SPECTRAL_FEATURE_NAMES) == N_SPECTRAL_FEATURES == 10
     assert len(HYBRID_FEATURE_NAMES) == N_HYBRID_FEATURES == 21
-    assert N_HYBRID_FEATURES == N_TEMPORAL_FEATURES + N_SPECTRAL_FEATURES
 
 
 def test_spectral_output_shape():
