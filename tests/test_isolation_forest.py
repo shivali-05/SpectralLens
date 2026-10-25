@@ -17,7 +17,7 @@ from spectrallens.detectors.isolation_forest import IsolationForestDetector
 from spectrallens.evaluation.metrics import event_hit, point_average_precision
 from spectrallens.evaluation.scoring import windows_to_points
 from spectrallens.evaluation.thresholding import fit_threshold_from_calibration
-from spectrallens.features.temporal import extract_temporal_features
+from spectrallens.features import extract_features, extract_temporal_features
 
 CFG = load_config("base", "synthetic")
 PROTO = Protocol.from_config(CFG)
@@ -25,15 +25,15 @@ W = CFG["windowing"]["size"]     # 128
 STEP = CFG["windowing"]["step"]  # 8
 
 
-# ── helper: run the full temporal-IF pipeline on one series ──────────────────
+# ── helper: run the full IF pipeline on one series ───────────────────────────
 
-def _run_temporal_pipeline(series):
-    """Run the full temporal-IF pipeline and return (labels, point_scores)."""
+def _run_pipeline(series, representation: str = "temporal"):
+    """Run the full representation-IF pipeline and return (labels, point_scores, threshold)."""
     split_windows = extract_split_windows(series.x, PROTO, window_size=W, step=STEP)
 
-    fit_feats = extract_temporal_features(split_windows["fit"].data)
-    cal_feats = extract_temporal_features(split_windows["calibration"].data)
-    test_feats = extract_temporal_features(split_windows["test"].data)
+    fit_feats = extract_features(split_windows["fit"].data, representation, cfg=CFG)
+    cal_feats = extract_features(split_windows["calibration"].data, representation, cfg=CFG)
+    test_feats = extract_features(split_windows["test"].data, representation, cfg=CFG)
 
     detector = IsolationForestDetector(CFG)
     detector.fit(fit_feats)  # scaler AND forest fit ONLY on fit features
@@ -53,6 +53,10 @@ def _run_temporal_pipeline(series):
     # Ground-truth labels for the test split only
     test_labels = series.labels[PROTO.test[0]:PROTO.test[1]]
     return test_labels, test_pt_scores, threshold
+
+
+def _run_temporal_pipeline(series):
+    return _run_pipeline(series, representation="temporal")
 
 
 # ── unit tests for IsolationForestDetector ───────────────────────────────────
@@ -163,3 +167,47 @@ def test_amplitude_change_ap_above_prevalence():
     assert ap > prevalence * 3, (
         f"Expected AP >> prevalence ({prevalence:.4f}), got AP={ap:.4f}"
     )
+
+
+def test_spectral_pipeline_runs_all_four_anomaly_types():
+    """Spectral pipeline must complete end-to-end for every anomaly type."""
+    anomaly_types = [
+        "point_spike",
+        "amplitude_change",
+        "frequency_shift",
+        "local_frequency_insertion",
+    ]
+    for anom in anomaly_types:
+        series = generate_series(CFG, "single_sinusoid", anom, 1)
+        labels, scores, threshold = _run_pipeline(series, representation="spectral")
+        assert len(labels) == PROTO.test[1] - PROTO.test[0]
+        assert len(scores) == len(labels)
+        assert np.isfinite(threshold)
+
+
+def test_hybrid_pipeline_runs_all_four_anomaly_types():
+    """Hybrid pipeline must complete end-to-end for every anomaly type."""
+    anomaly_types = [
+        "point_spike",
+        "amplitude_change",
+        "frequency_shift",
+        "local_frequency_insertion",
+    ]
+    for anom in anomaly_types:
+        series = generate_series(CFG, "single_sinusoid", anom, 1)
+        labels, scores, threshold = _run_pipeline(series, representation="hybrid")
+        assert len(labels) == PROTO.test[1] - PROTO.test[0]
+        assert len(scores) == len(labels)
+        assert np.isfinite(threshold)
+
+
+def test_spectral_pipeline_detects_frequency_shift():
+    """Spectral features detect frequency shift significantly above prevalence."""
+    series = generate_series(CFG, "single_sinusoid", "frequency_shift", 0, difficulty="easy")
+    labels, scores, _ = _run_pipeline(series, representation="spectral")
+    prevalence = float(labels.mean())
+    ap = point_average_precision(labels, scores)
+    assert ap > prevalence * 5, (
+        f"Expected spectral AP >> prevalence ({prevalence:.4f}), got AP={ap:.4f}"
+    )
+

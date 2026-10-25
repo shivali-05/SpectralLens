@@ -9,3 +9,4 @@ data/synthetic/*
 !data/synthetic/.gitkeep
 results/*
 !results/.gitkeep
+.DS_Store

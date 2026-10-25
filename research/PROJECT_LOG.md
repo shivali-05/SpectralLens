@@ -21,3 +21,21 @@
 ### Next
 - Confirm CI is green on GitHub (ruff + pytest on 3.10 and 3.12).
 - M2: windowing, point mapping, metrics, runner, following docs/WORKING_AGREEMENT.md.
+
+## 2026-10-24: Features & Representation Pipeline (Step 2.3 & Step 2.4)
+- Implemented Temporal Feature Set v1 (11 features): mean, median, std, min, max, range, iqr, slope, mean_abs_diff, std_diff, acf1.
+- Implemented Leakage-Free Isolation Forest pipeline with train-only StandardScaler.
+- Implemented Spectral Feature Set v1 (10 features): dominant_freq, dominant_magnitude, spectral_energy, spectral_entropy, spectral_centroid, spectral_bandwidth, band_ratio_low, band_ratio_mid, band_ratio_high, peak_count.
+- Leakage control: Hann window reduces sidelobe leakage by >100x vs boxcar on off-grid frequencies.
+- Implemented Hybrid representation (21 features = 11 temporal + 10 spectral) and unified `extract_features` dispatcher.
+- Full test suite: 97 unit and integration tests passing with zero warnings and zero ruff lint errors.
+
+## 2026-10-25: Experiment Runner & Orchestration (Step 2.5)
+- Implemented full factorial experiment runner (`src/spectrallens/experiments/runner.py`) with paired design (identical generated series evaluated across representations).
+- Added detector factory supporting Isolation Forest, RandomDetector (control), and RobustZDetector (control).
+- Comprehensive tabulation: per-cell metrics (results.csv, results.json), grouped summary aggregations (summary.csv, summary.json), and D-007 provenance metadata (metadata.json).
+- Implemented visual comparative plotting utility generating multi-panel diagnostic figures.
+- Created CLI entry point (`scripts/run_experiment.py`) with argument parsing for seed sweeps and diagnostic plots.
+- Test suite expanded to 106 tests, all passing in <8s with zero warnings and zero ruff lint errors.
+
+

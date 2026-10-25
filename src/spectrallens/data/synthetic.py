@@ -46,6 +46,24 @@ class SyntheticSeries:
     def series_id(self) -> str:
         return self.metadata["series_id"]
 
+    @property
+    def signal_type(self) -> str:
+        return self.metadata.get("signal_type", "")
+
+    @property
+    def anomaly_type(self) -> str | None:
+        anom = self.metadata.get("anomaly")
+        return anom.get("type") if anom else None
+
+    @property
+    def difficulty(self) -> str:
+        anom = self.metadata.get("anomaly")
+        return anom.get("difficulty", "default") if anom else "default"
+
+    @property
+    def index(self) -> int:
+        return self.metadata.get("index", 0)
+
 
 # ----------------------------------------------------------------------------- helpers
 
